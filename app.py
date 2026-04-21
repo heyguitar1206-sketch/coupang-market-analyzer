@@ -1,67 +1,73 @@
 import streamlit as st
 import pandas as pd
 import time
+import os
+import re
+import io
+from bs4 import BeautifulSoup
+import undetected_chromedriver as uc
 
-# 1. 앱 기본 설정
-st.set_page_config(page_title="쿠팡 시장 분석기", page_icon="🛒", layout="wide")
+# 서버/로컬 환경 자동 감지 및 드라이버 설정
+def get_driver():
+    options = uc.ChromeOptions()
+    # 🚨 서버(배포용) 설정
+    options.add_argument('--headless') # 서버에선 창을 띄울 수 없으므로 백그라운드 실행
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1600,1000')
+    
+    # 서버 환경일 때 크롬 경로 강제 지정 (Streamlit Cloud용)
+    if os.path.exists("/usr/bin/chromium-browser"):
+        options.binary_location = "/usr/bin/chromium-browser"
+        
+    try:
+        driver = uc.Chrome(options=options, use_subprocess=True)
+    except Exception:
+        # 에러 시 일반 옵션으로 재시도
+        driver = uc.Chrome(options=options)
+        
+    time.sleep(3) 
+    return driver
 
-st.title("🛒 쿠팡 키워드 시장 분석기 (시크릿 모드)")
-st.markdown("수동구매대행 셀러를 위한 객관적인 키워드 경쟁강도 분석 도구입니다. (개인화 검색 결과 배제)")
-st.markdown("---")
+# --- UI 및 CSS (애플 스타일 & 가로폭 70% 최적화) ---
+st.set_page_config(page_title="Coupang Wing 해외소싱 분석기", layout="wide")
 
-# 2. 키워드 입력부
-col1, col2 = st.columns([3, 1])
-with col1:
-    # 예시로 수강생들이 자주 찾는 아이템을 넣어두었습니다.
-    keyword = st.text_input("분석할 키워드를 입력하세요", placeholder="예: 접이식 자전거, 주방 수납장")
-with col2:
-    st.write("") # 버튼 위치를 맞추기 위한 빈 공간
-    st.write("")
-    analyze_btn = st.button("시장 분석 시작", use_container_width=True)
+st.markdown("""
+    <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    * { font-family: 'Pretendard', sans-serif !important; }
+    
+    [data-testid="stAppViewBlockContainer"] {
+        max-width: 70% !important;
+        margin: auto !important;
+    }
 
-# 3. 분석 실행 및 크롤링 로직 구조
-if analyze_btn:
-    if keyword:
-        with st.spinner(f"'{keyword}' 검색 결과를 수집 중입니다... (시크릿 모드 가동 중)"):
-            # 실제 크롤링 시에는 봇 차단을 피하기 위해 약간의 대기 시간이 필요합니다.
-            time.sleep(2) 
-            
-            # ---------------------------------------------------------
-            # 🚨 [개발 예정] 실제 Selenium 크롤링 로직이 들어갈 자리입니다.
-            # ---------------------------------------------------------
-            st.info("💡 크롤링 엔진 작동 방식 (설계도)")
-            st.code("""
-# 객관적 순위 추출을 위한 브라우저 설정 예시
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+    .step-container { display: flex; align-items: center; margin-bottom: 25px; gap: 10px; }
+    .step-badge { 
+        background-color: #2B66F6; color: white; 
+        font-size: 20px !important; font-weight: 800; 
+        width: 34px; height: 34px; 
+        display: flex; justify-content: center; align-items: center; 
+        border-radius: 6px;
+    }
+    .step-text { color: #111; font-size: 24px !important; font-weight: 800; }
 
-options = Options()
-options.add_argument("--incognito") # 시크릿 모드 (개인화 랭킹 무시)
-options.add_argument("--disable-blink-features=AutomationControlled") # 봇 탐지 우회
-options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)...") # 사람인 척 위장
+    .stButton>button {
+        border-radius: 6px !important; font-weight: 700 !important; font-size: 16px !important;
+        height: 45px; border: 1px solid #ddd; background-color: white; color: #333;
+    }
+    .stButton>button:hover { border-color: #2B66F6; color: #2B66F6; }
+    div[data-testid="stMarkdownContainer"] + div.stButton button[kind="primary"] {
+        background-color: #2B66F6 !important; color: white !important; border: none !important;
+    }
 
-# driver = webdriver.Chrome(options=options)
-# driver.get(f"https://www.coupang.com/np/search?q={keyword}")
-# ... 화면 스크롤 하강 및 상품 데이터(가격, 리뷰, 로켓 여부) 추출 ...
-            """, language='python')
-            
-            st.success("데이터 수집 완료! (아래는 데이터 처리 후 예시 화면입니다)")
+    .metric-container { padding: 10px 0; }
+    .metric-label { font-size: 19px !important; color: #444; font-weight: 700; margin-bottom: 8px; }
+    .metric-value { font-size: 34px !important; color: #2B66F6; font-weight: 800; letter-spacing: -1px; }
+    
+    hr { border-top: 1px solid #E0E0E0; margin: 40px 0; }
+    </style>
+""", unsafe_allow_html=True)
 
-            # 4. 수집된 데이터 출력 (현재는 테스트용 가짜 데이터)
-            st.subheader(f"📊 '{keyword}' 상위 노출 1페이지 분석 결과")
-            
-            dummy_data = {
-                "노출 순위": [1, 2, 3, 4, 5],
-                "상품명": [f"[광고] 프리미엄 {keyword}", f"가성비 도심형 {keyword}", f"초경량 미니벨로 {keyword}", f"수입 {keyword} 특가", f"접이식 {keyword} 풀세트"],
-                "가격(원)": ["250,000", "120,000", "310,000", "98,000", "155,000"],
-                "리뷰 수": [150, 890, 45, 12, 320],
-                "로켓배송": ["O", "X", "O", "X", "X"],
-                "예상 마진율": ["15%", "35%", "20%", "40%", "30%"]
-            }
-            df = pd.DataFrame(dummy_data)
-            
-            # 표 형태로 출력
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            
-    else:
-        st.warning("분석할 키워드를 먼저 입력해주세요.")
+# (이후 분석 로직 및 디자인은 이전과 동일하므로 생략 - 대표님 기존 코드의 본문을 그대로 사용하시면 됩니다.)

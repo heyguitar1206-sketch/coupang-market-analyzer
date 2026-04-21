@@ -1,5 +1,6 @@
 streamlit
 pandas
 beautifulsoup4
-undetected-chromedriver
+undetected_chromedriver
 openpyxl
+setuptools
